@@ -205,6 +205,11 @@ void params_dump(struct lib_ccx_ctx *ctx)
 			mprint("Reduced color palette]\n");
 			break;
 	}
+
+	if (ccx_options.hcc)
+	{
+		_hardsubx_params_dump(ccx_options, ctx->hardsubx_ctx);
+	}
 }
 
 #define Y_N(cond) ((cond) ? "Yes" : "No")

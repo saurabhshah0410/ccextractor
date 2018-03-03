@@ -161,6 +161,13 @@ struct lib_ccx_ctx* init_libraries(struct ccx_s_options *opt)
 	ctx->inputfile = opt->inputfile;
 	ctx->num_input_files = opt->num_input_files;
 
+#ifdef ENABLE_HARDSUBX
+	if(opt->hcc)
+	{
+		ctx->hardsubx_ctx = _init_hardsubx(opt); // For hard subs and closed captions
+	}
+#endif
+
 	ret = init_ctx_outbase(opt, ctx);
 	if (ret < 0) {
 		goto end;
@@ -243,6 +250,7 @@ void dinit_libraries( struct lib_ccx_ctx **ctx)
 	freep(&lctx->freport.data_from_708);
 	ccx_demuxer_delete(&lctx->demux_ctx);
 	dinit_decoder_setting(&lctx->dec_global_setting);
+	_dinit_hardsubx(&lctx->hardsubx_ctx);
 	freep(&ccx_options.enc_cfg.output_filename);
 	freep(&lctx->basefilename);
 	freep(&lctx->pesheaderbuf);

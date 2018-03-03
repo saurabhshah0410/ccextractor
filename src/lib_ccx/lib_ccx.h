@@ -146,6 +146,10 @@ struct lib_ccx_ctx
 	int segment_on_key_frames_only;
 	int segment_counter;
 	LLONG system_start_time;
+
+#ifdef ENABLE_HARDSUBX
+	struct lib_hardsubx_ctx *hardsubx_ctx; // For hcc
+#endif
 };
 
 

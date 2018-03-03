@@ -131,6 +131,7 @@ struct ccx_s_options // Options from user parameters
 	int keep_output_closed;
 	int force_flush;                  // Force flush on content write
 	int append_mode;                  // Append mode for output files
+	int hcc;                          // 1 if both burned-in subtitles and closed captions are to be extracted
 	int ucla;                         // 1 if UCLA used, 0 if not
 	int tickertext;                   // 1 if ticker text style burned in subs, 0 if not
 	int hardsubx;                     // 1 if burned-in subtitles to be extracted

@@ -1192,13 +1192,19 @@ int parse_parameters (struct ccx_s_options *opt, int argc, char *argv[])
 		}
 
 #ifdef ENABLE_HARDSUBX
+		// Parse -hcc and related parameters
+		if (strcmp(argv[i], "-hcc") == 0)
+		{
+			opt->hcc = 1;
+			continue;
+		}
 		// Parse -hardsubx and related parameters
 		if (strcmp(argv[i], "-hardsubx")==0)
 		{
 			opt->hardsubx = 1;
 			continue;
 		}
-		if (opt->hardsubx == 1)
+		if (opt->hardsubx == 1 || opt->hcc == 1)
 		{
 			if (strcmp(argv[i], "-ocr_mode")==0)
 			{

@@ -13,7 +13,7 @@
 
 char* _process_frame_white_basic(struct lib_hardsubx_ctx *ctx, AVFrame *frame, int width, int height, int index)
 {
-	//printf("frame : %04d\n", index);
+	//mprint("frame : %04d\n", index);
 	PIX *im;
 	PIX *edge_im;
 	PIX *lum_im;
@@ -251,7 +251,7 @@ void _display_frame(struct lib_hardsubx_ctx *ctx, AVFrame *frame, int width, int
 	char *txt=NULL;
 	// txt = get_ocr_text_simple(ctx, feat_im);
 	// txt=get_ocr_text_wordwise_threshold(ctx, feat_im, ctx->conf_thresh);
-	// if(txt != NULL)printf("%s\n", txt);
+	// if(txt != NULL)mprint("%s\n", txt);
 
 	pixDestroy(&im);
 	pixDestroy(&edge_im);
@@ -356,9 +356,9 @@ int hardsubx_process_frames_tickertext(struct lib_hardsubx_ctx *ctx, struct enco
 					);
 
 				ticker_text = _process_frame_tickertext(ctx,ctx->rgb_frame,ctx->codec_ctx->width,ctx->codec_ctx->height,frame_number);
-				printf("frame_number: %d\n", frame_number);
+				mprint("frame_number: %d\n", frame_number);
 
-				if(strlen(ticker_text)>0)printf("%s\n", ticker_text);
+				if(strlen(ticker_text)>0)mprint("%s\n", ticker_text);
 
 				cur_sec = (int)convert_pts_to_s(ctx->packet.pts, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
 				total_sec = (int)convert_pts_to_s(ctx->format_ctx->duration, AV_TIME_BASE_Q);
@@ -393,9 +393,30 @@ int hardsubx_process_frames_linear(struct lib_hardsubx_ctx *ctx, struct encoder_
 
 			if(got_frame && frame_number % 25 == 0)
 			{
-				float diff = (float)convert_pts_to_ms(ctx->packet.pts - prev_packet_pts, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
+				hardsubx_process_single_frame(&ctx, &prev_packet_pts, &begin_time, &end_time, &prev_subtitle_text, enc_ctx);
+			}
+		}
+		av_packet_unref(&ctx->packet);
+	}
+
+	add_cc_sub_text(ctx->dec_sub, prev_subtitle_text, begin_time, end_time, "", "BURN", CCX_ENC_UTF_8);
+	encode_sub(enc_ctx, ctx->dec_sub);
+	activity_progress(100,cur_sec/60,cur_sec%60);
+
+}
+
+void hardsubx_process_single_frame(struct lib_hardsubx_ctx **ctxp, LLONG *prev_packet_pts, LLONG *begin_time, LLONG *end_time, char **prev_subtitle_text, struct encoder_ctx *enc_ctx, int *changed)
+{
+	int dist;
+	int cur_sec,total_sec,progress;
+	static int frame_number = 0;
+	char *subtitle_text=NULL;
+	struct lib_hardsubx_ctx *ctx = *ctxp;
+	//struct encoder_ctx *enc_ctx = *enc_ctxp;
+
+	float diff = (float)convert_pts_to_ms(ctx->packet.pts - *prev_packet_pts, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
 				if(abs(diff) < 1000*ctx->min_sub_duration) //If the minimum duration of a subtitle line is exceeded, process packet
-					continue;
+					return;
 
 				// sws_scale is used to convert the pixel format to RGB24 from all other cases
 				sws_scale(
@@ -423,28 +444,34 @@ int hardsubx_process_frames_linear(struct lib_hardsubx_ctx *ctx, struct encoder_
 				cur_sec = (int)convert_pts_to_s(ctx->packet.pts, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
 				total_sec = (int)convert_pts_to_s(ctx->format_ctx->duration, AV_TIME_BASE_Q);
 				progress = (cur_sec*100)/total_sec;
-				activity_progress(progress,cur_sec/60,cur_sec%60);
+				//activity_progress(progress,cur_sec/60,cur_sec%60);
+
+				*end_time = convert_pts_to_ms(ctx->packet.pts, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
+				mprint("\nEND_TIME HARDSUB SINGLE: %ld\n", *end_time);
 
 				if(subtitle_text==NULL)
-					continue;
+					return;
 				if(!strlen(subtitle_text))
-					continue;
+					return;
 				char *double_enter = strstr(subtitle_text,"\n\n");
 				if(double_enter!=NULL)
 					*(double_enter)='\0';
 				//subtitle_text = prune_string(subtitle_text);
-
-				end_time = convert_pts_to_ms(ctx->packet.pts, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
-				if(prev_subtitle_text)
+				printf("No segfault\n");
+				if(*prev_subtitle_text)
 				{
+					printf("No segfault1\n");
 					//TODO: Encode text with highest confidence
-					dist = edit_distance(subtitle_text, prev_subtitle_text, strlen(subtitle_text), strlen(prev_subtitle_text));
+					dist = edit_distance(subtitle_text, *prev_subtitle_text, strlen(subtitle_text), strlen(*prev_subtitle_text));
 
-					if(dist > (0.2 * fmin(strlen(subtitle_text), strlen(prev_subtitle_text))))
+					printf("No segfault2\n");
+					if(dist > (0.2 * fmin(strlen(subtitle_text), strlen(*prev_subtitle_text))))
 					{
-						add_cc_sub_text(ctx->dec_sub, prev_subtitle_text, begin_time, end_time, "", "BURN", CCX_ENC_UTF_8);
+						mprint("\n HARDSUBS::: %s:::\n", *prev_subtitle_text);
+						add_cc_sub_text(ctx->dec_sub, *prev_subtitle_text, *begin_time, *end_time, "", "BURN", CCX_ENC_UTF_8);
 						encode_sub(enc_ctx, ctx->dec_sub);
-						begin_time = end_time + 1;
+						*begin_time = *end_time + 1;
+						printf("No segfault3\n");
 					}
 				}
 
@@ -460,23 +487,144 @@ int hardsubx_process_frames_linear(struct lib_hardsubx_ctx *ctx, struct encoder_
 				// {
 				// 	prev_subtitle_text = strdup(subtitle_text);
 				// }
-				prev_subtitle_text = strdup(subtitle_text);
-				prev_packet_pts = ctx->packet.pts;
+				*prev_subtitle_text = strdup(subtitle_text);
+				*prev_packet_pts = ctx->packet.pts;
+}
+
+void hardsubx_post_cc(struct lib_hardsubx_ctx **ctxp, struct encoder_ctx *enc_ctx, ULLONG start, ULLONG end, char **prev_hardsub)
+{
+	int got_frame;
+	int dist;
+	int cur_sec,total_sec,progress;
+	int frame_number = 0;
+	int64_t begin_time = start,end_time = 0,prev_packet_pts = 0;
+	char *subtitle_text=NULL;
+	char *prev_subtitle_text = *prev_hardsub;
+	struct lib_hardsubx_ctx *ctx = *ctxp;
+	int changed = 0;
+
+	printf("Address1\n");
+	printf("Address of prev_hardsub: %p\n", &prev_hardsub);
+	printf("Address of prev_subtitle_text: %p\n", &prev_subtitle_text);
+	if(start == -1) {
+		// Get the required media attributes and initialize structures
+		av_register_all();
+		
+		if(avformat_open_input(&ctx->format_ctx, ctx->inputfile[0], NULL, NULL)!=0)
+		{
+			fatal (EXIT_READ_ERROR, "Error reading input file!\n");
+		}
+
+		if(avformat_find_stream_info(ctx->format_ctx, NULL)<0)
+		{
+			fatal (EXIT_READ_ERROR, "Error reading input stream!\n");
+		}
+
+		// Important call in order to determine media information using ffmpeg
+		// TODO: Handle multiple inputs
+		av_dump_format(ctx->format_ctx, 0, ctx->inputfile[0], 0);
+		
+
+		ctx->video_stream_id = -1;
+		for(int i = 0; i < ctx->format_ctx->nb_streams; i++)
+		{
+			if(ctx->format_ctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO)
+			{
+				ctx->video_stream_id = i;
+				break;
+			}
+		}
+		if(ctx->video_stream_id == -1)
+		{
+			fatal (EXIT_READ_ERROR, "Video Stream not found!\n");
+		}
+
+		ctx->codec_ctx = ctx->format_ctx->streams[ctx->video_stream_id]->codec;
+		ctx->codec = avcodec_find_decoder(ctx->codec_ctx->codec_id);
+		if(ctx->codec == NULL)
+		{
+			fatal (EXIT_READ_ERROR, "Input codec is not supported!\n");
+		}
+
+		if(avcodec_open2(ctx->codec_ctx, ctx->codec, &ctx->options_dict) < 0)
+		{
+			fatal (EXIT_READ_ERROR, "Error opening input codec!\n");
+		}
+
+		ctx->frame = av_frame_alloc();
+		ctx->rgb_frame = av_frame_alloc();
+		if(!ctx->frame || !ctx->rgb_frame)
+		{
+			fatal(EXIT_NOT_ENOUGH_MEMORY, "Not enough memory to initialize frame!");
+		}
+
+		int frame_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, ctx->codec_ctx->width, ctx->codec_ctx->height, 16);
+		ctx->rgb_buffer = (uint8_t *)av_malloc(frame_bytes*sizeof(uint8_t));
+		
+		ctx->sws_ctx = sws_getContext(
+				ctx->codec_ctx->width,
+				ctx->codec_ctx->height,
+				ctx->codec_ctx->pix_fmt,
+				ctx->codec_ctx->width,
+				ctx->codec_ctx->height,
+				AV_PIX_FMT_RGB24,
+				SWS_BILINEAR,
+				NULL,NULL,NULL
+			);
+
+		av_image_fill_arrays(ctx->rgb_frame->data, ctx->rgb_frame->linesize, ctx->rgb_buffer, AV_PIX_FMT_RGB24, ctx->codec_ctx->width, ctx->codec_ctx->height, 1);
+		return NULL;
+	}
+	// Do an exhaustive linear search over the video
+	LLONG start_pts = start*90;
+    //AVRational bq = {1,1000};
+	//LLONG start_pts = av_rescale_q(start, bq, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
+	mprint("\n\nSTARTPTS: %ld\n\n", start_pts);
+	mprint("\n\nStart: %ld End: %ld\n\n", start, end);
+	if(av_seek_frame(ctx->format_ctx, ctx->video_stream_id, start_pts, AVSEEK_FLAG_ANY) < 0)
+		return NULL;
+	//avcodec_flush_buffers(ctx->codec_ctx);
+	//if(avformat_seek_file(ctx->format_ctx, ctx->video_stream_id, 0, start_pts, start_pts, AVSEEK_FLAG_FRAME) < 0)
+	//	return NULL;
+	while(av_read_frame(ctx->format_ctx, &ctx->packet)>=0)
+	{
+		if(ctx->packet.stream_index == ctx->video_stream_id)
+		{
+			frame_number++;
+			//Decode the video stream packet
+			avcodec_decode_video2(ctx->codec_ctx, ctx->frame, &got_frame, &ctx->packet);
+
+			if(got_frame && frame_number % 25 == 0)
+			{
+				mprint("Packet info: %lld pts %lld pos\n", ctx->packet.pts, ctx->packet.pos);
+				end_time = convert_pts_to_ms(ctx->packet.pts, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
+				if(end_time >= end) {
+					av_packet_unref(&ctx->packet);
+					break;
+				}
+				hardsubx_process_single_frame(&ctx, &prev_packet_pts, &begin_time, &end_time, &prev_subtitle_text, enc_ctx, &changed);
+				printf("No segfault4\n");
 			}
 		}
 		av_packet_unref(&ctx->packet);
 	}
 
-	add_cc_sub_text(ctx->dec_sub, prev_subtitle_text, begin_time, end_time, "", "BURN", CCX_ENC_UTF_8);
-	encode_sub(enc_ctx, ctx->dec_sub);
-	activity_progress(100,cur_sec/60,cur_sec%60);
-
+	// printf("No segfault5\n");
+	// printf("Address2\n");
+	// printf("Address of prev_hardsub: %p\n", prev_hardsub);
+	// printf("Address of prev_subtitle_text: %p\n", &prev_subtitle_text);
+	// if(prev_subtitle_text && strlen(prev_subtitle_text) > 0 && changed) {
+	// 	add_cc_sub_text(ctx->dec_sub, prev_subtitle_text, begin_time, end_time, "", "BURN", CCX_ENC_UTF_8);
+	// 	encode_sub(enc_ctx, ctx->dec_sub);
+	// }
+	//activity_progress(100,cur_sec/60,cur_sec%60);
+	*prev_hardsub = prev_subtitle_text;
 }
 
 int hardsubx_process_frames_binary(struct lib_hardsubx_ctx *ctx)
 {
 	// Do a binary search over the input video for faster processing
-	// printf("Duration: %d\n", (int)ctx->format_ctx->duration);
+	// mprint("Duration: %d\n", (int)ctx->format_ctx->duration);
 	int got_frame;
 	int seconds_time = 0;
 	for(seconds_time=0;seconds_time<20;seconds_time++){
@@ -484,10 +632,10 @@ int hardsubx_process_frames_binary(struct lib_hardsubx_ctx *ctx)
 	seek_time = av_rescale_q(seek_time, AV_TIME_BASE_Q, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
 
 	int ret = av_seek_frame(ctx->format_ctx, ctx->video_stream_id, seek_time, AVSEEK_FLAG_BACKWARD);
-	// printf("%d\n", ret);
+	// mprint("%d\n", ret);
 	// if(ret < 0)
 	// {
-	// 	printf("seeking back\n");
+	// 	mprint("seeking back\n");
 	// 	ret = av_seek_frame(ctx->format_ctx, -1, seek_time, AVSEEK_FLAG_BACKWARD);
 	// }
 	if(ret >= 0)
@@ -499,10 +647,10 @@ int hardsubx_process_frames_binary(struct lib_hardsubx_ctx *ctx)
 				avcodec_decode_video2(ctx->codec_ctx, ctx->frame, &got_frame, &ctx->packet);
 				if(got_frame)
 				{
-					// printf("%d\n", seek_time);
+					// mprint("%d\n", seek_time);
 					if(ctx->packet.pts < seek_time)
 						continue;
-					// printf("GOT FRAME: %d\n",ctx->packet.pts);
+					// mprint("GOT FRAME: %d\n",ctx->packet.pts);
 					// sws_scale is used to convert the pixel format to RGB24 from all other cases
 					sws_scale(
 							ctx->sws_ctx,
@@ -522,7 +670,7 @@ int hardsubx_process_frames_binary(struct lib_hardsubx_ctx *ctx)
 	}
 	else
 	{
-		printf("Seeking to timestamp failed\n");
+		mprint("Seeking to timestamp failed\n");
 	}
 	}
 }

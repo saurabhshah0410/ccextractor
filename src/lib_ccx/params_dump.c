@@ -4,6 +4,11 @@
 
 #include "ccx_decoders_708.h"
 
+#ifdef ENABLE_HARDSUBX
+#include "hardsubx.h"
+#endif
+
+
 void params_dump(struct lib_ccx_ctx *ctx)
 {
 	// Display parsed parameters
@@ -208,7 +213,7 @@ void params_dump(struct lib_ccx_ctx *ctx)
 
 	if (ccx_options.hcc)
 	{
-		_hardsubx_params_dump(ccx_options, ctx->hardsubx_ctx);
+		_hardsubx_params_dump(&ccx_options, ctx->hardsubx_ctx);
 	}
 }
 

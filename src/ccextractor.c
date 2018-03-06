@@ -41,7 +41,6 @@ void print_end_msg(void)
 int api_start(struct ccx_s_options api_options)
 {
     struct lib_ccx_ctx *ctx;
-    struct lib_hardsubx_ctx *hardsubx_ctx;
     struct lib_cc_decode *dec_ctx = NULL;
     int ret = 0, tmp;
     enum ccx_stream_mode_enum stream_mode;

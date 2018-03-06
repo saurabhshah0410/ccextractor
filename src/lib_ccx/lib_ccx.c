@@ -6,6 +6,10 @@
 #include "ccx_decoders_708.h"
 #include "ccx_decoders_isdb.h"
 
+#ifdef ENABLE_HARDSUBX
+#include "hardsubx.h"
+#endif
+
 struct ccx_common_logging_t ccx_common_logging;
 static struct ccx_decoders_common_settings_t *init_decoder_setting(
 		struct ccx_s_options *opt)
@@ -250,7 +254,8 @@ void dinit_libraries( struct lib_ccx_ctx **ctx)
 	freep(&lctx->freport.data_from_708);
 	ccx_demuxer_delete(&lctx->demux_ctx);
 	dinit_decoder_setting(&lctx->dec_global_setting);
-	_dinit_hardsubx(&lctx->hardsubx_ctx);
+	if(lctx->hardsubx_ctx)
+		_dinit_hardsubx(&lctx->hardsubx_ctx);
 	freep(&ccx_options.enc_cfg.output_filename);
 	freep(&lctx->basefilename);
 	freep(&lctx->pesheaderbuf);

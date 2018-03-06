@@ -11,6 +11,10 @@
 #include "activity.h"
 #include "ccx_dtvcc.h"
 
+#ifdef ENABLE_HARDSUBX
+#include "hardsubx.h"
+#endif
+
 #define MEDIA_TYPE(type, subtype) (((u64)(type)<<32)+(subtype))
 
 static short bswap16(short v)
@@ -607,6 +611,10 @@ int processmp4 (struct lib_ccx_ctx *ctx, struct ccx_s_mp4Cfg *cfg, char *file)
 			mprint("%u timescale\n", (unsigned)timescale);
 			mprint("%u duration\n", (unsigned)duration);
 #endif
+			LLONG prev_fts=-1;
+			char *prev_hardsub = NULL;
+						mprint("%u timescale\n", (unsigned)timescale);
+
 			for (unsigned k = 0; k < num_samples; k++) {
 				u32 StreamDescriptionIndex;
 				GF_ISOSample *sample = gf_isom_get_sample(f, i + 1, k + 1, &StreamDescriptionIndex);
@@ -626,6 +634,13 @@ int processmp4 (struct lib_ccx_ctx *ctx, struct ccx_s_mp4Cfg *cfg, char *file)
 				set_current_pts(dec_ctx->timing, (sample->DTS + sample->CTS_Offset)*MPEG_CLOCK_FREQ / timescale);
 				set_fts(dec_ctx->timing);
 
+#ifdef ENABLE_HARDSUBX
+				//printf("Pre hardsubx_post_cc\n");
+				if (ctx->hardsubx_ctx)
+					hardsubx_post_cc(&ctx->hardsubx_ctx, enc_ctx, prev_fts, dec_ctx->timing->fts_now, &prev_hardsub);
+				//printf("Post hardsubx_post_cc\n");
+#endif
+				prev_fts = dec_ctx->timing->fts_now;
 				int atomStart = 0;
 				// Process Atom by Atom
 				while (atomStart < sample->dataLength) {

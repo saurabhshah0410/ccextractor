@@ -106,6 +106,7 @@ int hardsubx_process_data(struct lib_hardsubx_ctx *ctx)
 		hardsubx_process_frames_tickertext(ctx, enc_ctx);
 	else
 		hardsubx_process_frames_linear(ctx, enc_ctx);
+		//hardsubx_post_cc(&ctx, enc_ctx, 1, 10000);
 
 	dinit_encoder(&enc_ctx, 0); //TODO: Replace 0 with end timestamp
 

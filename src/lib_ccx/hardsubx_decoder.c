@@ -407,12 +407,12 @@ int hardsubx_process_frames_linear(struct lib_hardsubx_ctx *ctx, struct encoder_
 
 void hardsubx_process_single_frame(struct lib_hardsubx_ctx **ctxp, LLONG *prev_packet_pts, LLONG *begin_time, LLONG *end_time, char **prev_subtitle_text, struct encoder_ctx *enc_ctx, int *changed)
 {
-	int dist;
+	static int prev_sub_encoded = 0;
+	int dist = 0;
 	int cur_sec,total_sec,progress;
 	static int frame_number = 0;
 	char *subtitle_text=NULL;
 	struct lib_hardsubx_ctx *ctx = *ctxp;
-	//struct encoder_ctx *enc_ctx = *enc_ctxp;
 
 	float diff = (float)convert_pts_to_ms(ctx->packet.pts - *prev_packet_pts, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
 				if(abs(diff) < 1000*ctx->min_sub_duration) //If the minimum duration of a subtitle line is exceeded, process packet
@@ -449,32 +449,42 @@ void hardsubx_process_single_frame(struct lib_hardsubx_ctx **ctxp, LLONG *prev_p
 				*end_time = convert_pts_to_ms(ctx->packet.pts, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
 				mprint("\nEND_TIME HARDSUB SINGLE: %ld\n", *end_time);
 
-				if(subtitle_text==NULL)
+				if(subtitle_text == NULL && prev_sub_encoded)
 					return;
-				if(!strlen(subtitle_text))
-					return;
-				char *double_enter = strstr(subtitle_text,"\n\n");
-				if(double_enter!=NULL)
-					*(double_enter)='\0';
+				if(subtitle_text) {
+					if(!strlen(subtitle_text) && prev_sub_encoded)
+						return;
+					char *double_enter = strstr(subtitle_text,"\n\n");
+					if(double_enter!=NULL)
+						*(double_enter)='\0';
+				}
 				//subtitle_text = prune_string(subtitle_text);
-				printf("No segfault\n");
-				if(*prev_subtitle_text)
-				{
-					printf("No segfault1\n");
-					//TODO: Encode text with highest confidence
-					dist = edit_distance(subtitle_text, *prev_subtitle_text, strlen(subtitle_text), strlen(*prev_subtitle_text));
 
-					printf("No segfault2\n");
-					if(dist > (0.2 * fmin(strlen(subtitle_text), strlen(*prev_subtitle_text))))
+				if(!prev_sub_encoded && *prev_subtitle_text) 
+				{
+					//TODO: Encode text with highest confidence
+					if(subtitle_text) 
 					{
+						dist = edit_distance(subtitle_text, *prev_subtitle_text, strlen(subtitle_text), strlen(*prev_subtitle_text));
+
+						if(dist < (0.2 * fmin(strlen(subtitle_text), strlen(*prev_subtitle_text))))
+							dist = -1;
+						// {
+						// 	mprint("\n HARDSUBS::: %s:::\n", *prev_subtitle_text);
+						// 	add_cc_sub_text(ctx->dec_sub, *prev_subtitle_text, *begin_time, *end_time, "", "BURN", CCX_ENC_UTF_8);
+						// 	encode_sub(enc_ctx, ctx->dec_sub);
+						// 	prev_sub_encoded = 1;
+						// }
+					}
+					if(dist != -1) {
 						mprint("\n HARDSUBS::: %s:::\n", *prev_subtitle_text);
 						add_cc_sub_text(ctx->dec_sub, *prev_subtitle_text, *begin_time, *end_time, "", "BURN", CCX_ENC_UTF_8);
 						encode_sub(enc_ctx, ctx->dec_sub);
-						*begin_time = *end_time + 1;
-						printf("No segfault3\n");
+						prev_sub_encoded = 1;
 					}
-				}
 
+				}
+				*begin_time = *end_time + 1;
 				// if(ctx->conf_thresh > 0)
 				// {
 				// 	if(ctx->cur_conf >= ctx->prev_conf)
@@ -487,7 +497,10 @@ void hardsubx_process_single_frame(struct lib_hardsubx_ctx **ctxp, LLONG *prev_p
 				// {
 				// 	prev_subtitle_text = strdup(subtitle_text);
 				// }
-				*prev_subtitle_text = strdup(subtitle_text);
+				if(subtitle_text) {
+					*prev_subtitle_text = strdup(subtitle_text);
+					prev_sub_encoded = 0;
+				}
 				*prev_packet_pts = ctx->packet.pts;
 }
 
@@ -503,11 +516,12 @@ void hardsubx_post_cc(struct lib_hardsubx_ctx **ctxp, struct encoder_ctx *enc_ct
 	struct lib_hardsubx_ctx *ctx = *ctxp;
 	int changed = 0;
 
-	printf("Address1\n");
-	printf("Address of prev_hardsub: %p\n", &prev_hardsub);
-	printf("Address of prev_subtitle_text: %p\n", &prev_subtitle_text);
+	// printf("Address1\n");
+	// printf("Address of prev_hardsub: %p\n", &prev_hardsub);
+	// printf("Address of prev_subtitle_text: %p\n", &prev_subtitle_text);
 	if(start == -1) {
 		// Get the required media attributes and initialize structures
+
 		av_register_all();
 		
 		if(avformat_open_input(&ctx->format_ctx, ctx->inputfile[0], NULL, NULL)!=0)
@@ -573,7 +587,7 @@ void hardsubx_post_cc(struct lib_hardsubx_ctx **ctxp, struct encoder_ctx *enc_ct
 			);
 
 		av_image_fill_arrays(ctx->rgb_frame->data, ctx->rgb_frame->linesize, ctx->rgb_buffer, AV_PIX_FMT_RGB24, ctx->codec_ctx->width, ctx->codec_ctx->height, 1);
-		return NULL;
+		return;
 	}
 	// Do an exhaustive linear search over the video
 	LLONG start_pts = start*90;
@@ -582,7 +596,7 @@ void hardsubx_post_cc(struct lib_hardsubx_ctx **ctxp, struct encoder_ctx *enc_ct
 	mprint("\n\nSTARTPTS: %ld\n\n", start_pts);
 	mprint("\n\nStart: %ld End: %ld\n\n", start, end);
 	if(av_seek_frame(ctx->format_ctx, ctx->video_stream_id, start_pts, AVSEEK_FLAG_ANY) < 0)
-		return NULL;
+		return;
 	//avcodec_flush_buffers(ctx->codec_ctx);
 	//if(avformat_seek_file(ctx->format_ctx, ctx->video_stream_id, 0, start_pts, start_pts, AVSEEK_FLAG_FRAME) < 0)
 	//	return NULL;
@@ -593,15 +607,14 @@ void hardsubx_post_cc(struct lib_hardsubx_ctx **ctxp, struct encoder_ctx *enc_ct
 			frame_number++;
 			//Decode the video stream packet
 			avcodec_decode_video2(ctx->codec_ctx, ctx->frame, &got_frame, &ctx->packet);
-
+			end_time = convert_pts_to_ms(ctx->packet.pts, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
+			if(end_time >= end) {
+				av_packet_unref(&ctx->packet);
+				break;
+			}
 			if(got_frame && frame_number % 25 == 0)
 			{
-				mprint("Packet info: %lld pts %lld pos\n", ctx->packet.pts, ctx->packet.pos);
-				end_time = convert_pts_to_ms(ctx->packet.pts, ctx->format_ctx->streams[ctx->video_stream_id]->time_base);
-				if(end_time >= end) {
-					av_packet_unref(&ctx->packet);
-					break;
-				}
+				//mprint("Packet info: %lld pts %lld pos\n", ctx->packet.pts, ctx->packet.pos);
 				hardsubx_process_single_frame(&ctx, &prev_packet_pts, &begin_time, &end_time, &prev_subtitle_text, enc_ctx, &changed);
 				printf("No segfault4\n");
 			}
